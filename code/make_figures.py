@@ -21,6 +21,30 @@ from matplotlib.colors import to_hex
 from skimage.measure import label, find_contours
 from shapely.geometry import Polygon
 from shapely.ops import polylabel
+from itertools import combinations
+from scipy.optimize import minimize, NonlinearConstraint
+
+def get_well_spaced_angles(angles, minimum_delta_angle=2*np.pi/36):
+
+    def get_angle_difference(a, b):
+        return np.abs(np.arctan2(np.sin(a - b), np.cos(a - b)))
+
+    def cost_function(new, old):
+        return np.sum(get_angle_difference(new, old))
+
+    def constraint_function(angles):
+        a, b = np.array(list(combinations(angles, 2))).T
+        return get_angle_difference(a, b)
+
+    nonlinear_constraint = NonlinearConstraint(constraint_function, lb=minimum_delta_angle, ub=np.pi + 1e-3)
+    res = minimize(lambda x: cost_function(x, angles), angles, constraints=[nonlinear_constraint])
+    return res.x
+
+
+def get_well_spaced_vectors(vectors, minimum_delta_angle=2*np.pi/36):
+    angles = np.arctan2(vectors[:, 1], vectors[:, 0])
+    angles = get_well_spaced_angles(angles, minimum_delta_angle)
+    return np.c_[np.cos(angles), np.sin(angles)]
 
 
 if __name__ == "__main__":
@@ -89,14 +113,6 @@ if __name__ == "__main__":
                 y = contour[:, 0]
                 axes[-1].plot(x, y, "#677e8c", linewidth=1.0)
 
-            # compute slice radius
-            slice_radius = 0
-            center = np.array([yc, xc])
-            for contour in contours:
-                delta = contour - center[np.newaxis, :]
-                distance = np.linalg.norm(delta, axis=1)
-                slice_radius = max(slice_radius, np.max(distance))
-
             # plot region contours
             for annotation_id in np.unique(annotation):
                 if annotation_id > 0: # 0 is background
@@ -106,48 +122,80 @@ if __name__ == "__main__":
                         y = contour[:, 0]
                         axes[-1].plot(x, y, color=to_hex(color_map[annotation_id]/255), linewidth=0.25)
 
-                    # label regions that have a sample in them
-                    if np.any(np.logical_and(region_mask, ~np.isnan(sample_mask))):
-                        region_mask[:, :int(xc) + 1] = False
-                        contours = find_contours(region_mask, 0.5)
-                        # The algorithm sometimes identifies spurious contours around the corners of the region.
-                        # We hence only plot the largest contour.
-                        contour = sorted(contours, key = lambda x : len(x))[-1]
-                        patch = plt.Polygon(np.c_[contour[:, 1], contour[:, 0]], color=to_hex(color_map[annotation_id]/255))
-                        axes[-1].add_patch(patch)
-                        polygon = Polygon(np.c_[contour[:, 1], contour[:, 0]])
-                        poi = polylabel(polygon, tolerance=0.1)
-                        x, y = poi.x, poi.y
-                        # axes[-1].plot(x, y, 'o', color=to_hex(color_map[annotation_id]/255))
-                        delta_xy = np.array([x - xc, y - yc])
-                        distance_xy = np.linalg.norm(delta_xy)
-                        axes[-1].annotate(
-                            name_map[int(annotation_id)],
-                            (x, y),
-                            np.array([x, y]) + (1.1 * slice_radius - distance_xy) * delta_xy / distance_xy,
-                            ha="left", va="bottom",
-                            fontsize=5,
-                            color=to_hex(color_map[annotation_id]/255),
-                            arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
-                            wrap=True,
-                        )
+            # compute slice radius
+            slice_radius = 0
+            center = np.array([yc, xc])
+            for contour in contours:
+                delta = contour - center[np.newaxis, :]
+                distance = np.linalg.norm(delta, axis=1)
+                slice_radius = max(slice_radius, np.max(distance))
 
-            # plot and label samples
-            for _, row in df[df["slice_number"] == slice_number].iterrows():
-                x = row["segmentation_col"]
-                y = row["segmentation_row"]
-                axes[-1].plot(x, y, linestyle="", marker='o', color=row["subclass_color"])
-                delta_xy = np.array([x - xc, y - yc])
-                distance_xy = np.linalg.norm(delta_xy)
-                axes[-1].annotate(
-                    row["barcode"],
-                    (x, y),
-                    np.array([x, y]) + (1.1 * slice_radius - distance_xy) * delta_xy / distance_xy,
-                    ha="right", va="bottom",
-                    fontsize=5,
-                    arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
-                    wrap=True,
-                )
+            subset = df[df["slice_number"] == slice_number]
+
+            if len(subset) > 0:
+
+                # plot sample locations
+                for _, row in subset.iterrows():
+                    x = row["segmentation_col"]
+                    y = row["segmentation_row"]
+                    axes[-1].plot(x, y, linestyle="", marker='o', markersize=1, color=row["subclass_color"])
+
+                # annotate samples; prevent labels from overlapping
+                labels = subset["barcode"]
+                center = np.array([xc, yc])
+                coordinates = subset[["segmentation_col", "segmentation_row"]].values
+                vectors = coordinates - center[np.newaxis, :]
+                vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
+                if len(vectors) > 1:
+                    vectors = get_well_spaced_vectors(vectors)
+                for xy, vector, label in zip(coordinates, vectors, labels):
+                    axes[-1].annotate(
+                        label,
+                        xy,
+                        center + 1.1 * slice_radius * vector,
+                        ha="right", va="bottom",
+                        fontsize=5,
+                        arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
+                        wrap=True,
+                    )
+
+                # plot regions that have a sample in them
+                region_coordinates = []
+                region_labels = []
+                region_colors = []
+                for annotation_id in np.unique(subset["annotation_id"]):
+                    region_mask = annotation == annotation_id
+                    region_mask[:, :int(xc) + 1] = False
+                    contours = find_contours(region_mask, 0.5)
+                    # The contour finding algorithm sometimes identifies
+                    # spurious contours around the corners of the region.
+                    # We hence only plot the largest contour.
+                    contour = sorted(contours, key = lambda x : len(x))[-1]
+                    patch = plt.Polygon(np.c_[contour[:, 1], contour[:, 0]], color=to_hex(color_map[annotation_id]/255))
+                    axes[-1].add_patch(patch)
+                    polygon = Polygon(np.c_[contour[:, 1], contour[:, 0]])
+                    poi = polylabel(polygon, tolerance=0.1)
+                    x, y = poi.x, poi.y
+                    region_coordinates.append((x, y))
+                    region_labels.append(name_map[int(annotation_id)])
+
+                # annotate regions
+                region_coordinates = np.array(region_coordinates)
+                vectors = region_coordinates - center[np.newaxis, :]
+                vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
+                if len(vectors) > 1:
+                    vectors = get_well_spaced_vectors(vectors)
+                for xy, vector, label in zip(region_coordinates, vectors, region_labels):
+                    axes[-1].annotate(
+                        label,
+                        xy,
+                        center + 1.1 * slice_radius * vector,
+                        ha="left", va="bottom",
+                        fontsize=5,
+                        arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
+                        wrap=True,
+                    )
+
             fig.savefig(output_directory / f"slice_{slice_number:03d}.svg")
             pdf.savefig(fig)
             plt.close(fig)
