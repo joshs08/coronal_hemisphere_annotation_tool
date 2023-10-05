@@ -1,4 +1,4 @@
-![Designed by Freepik](./images/angry_cat.jpg)
+<img src="./images/angry_cat.jpg" alt="Designed by Freepik" width="250"/>
 
 # Coronal Hemisphere Annotation Tool (CHAT)
 
