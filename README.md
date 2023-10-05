@@ -1,4 +1,4 @@
-<img align="left" width="80" src="./images/angry_cat.jpg" alt="Designed by Freepik">
+<img align="right" width="80" src="./images/angry_cat.jpg" alt="Designed by Freepik">
 
 # Coronal Hemisphere Annotation Tool (CHAT)
 
