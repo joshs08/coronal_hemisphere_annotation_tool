@@ -1,4 +1,5 @@
-<img src="./images/angry_cat.jpg" alt="Designed by Freepik" width="100"/>
+<img align="left" width="80" src="./images/angry_cat.jpg" alt="Designed by Freepik">
+
 # Coronal Hemisphere Annotation Tool (CHAT)
 
 The coronal hemisphere annotation tool is a pipeline for annotating
