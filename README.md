@@ -40,7 +40,7 @@ cd /path/to/coronal_hemisphere_annotation_tool/
 4. Create a virtual environment that contains the required dependencies.
 
 ``` shell
-conda create --name chat -f environment.yml python=3.7
+conda create --name chat --file environment.yml python=3.7
 ```
 
 ## Before every use
