@@ -109,35 +109,28 @@ if __name__ == "__main__":
                     # label regions that have a sample in them
                     if np.any(np.logical_and(region_mask, ~np.isnan(sample_mask))):
                         region_mask[:, :int(xc) + 1] = False
-                        # If the current slice/view contains several disjunct regions with that label,
-                        # only plot and label the subregion(s) containing the sample.
-                        labelled_region_mask, num = label(region_mask, return_num=True)
-                        if num > 1:
-                            subregions = [subregion for subregion in np.unique(labelled_region_mask[~np.isnan(sample_mask)]) if subregion != 0]
-                            tmp = np.zeros_like(region_mask)
-                            for subregion in subregions:
-                                is_subregion = labelled_region_mask == subregion
-                                tmp[is_subregion] = True
-                            region_mask = tmp
-                        for contour in find_contours(region_mask, 0.5):
-                            patch = plt.Polygon(np.c_[contour[:, 1], contour[:, 0]], color=to_hex(color_map[annotation_id]/255))
-                            axes[-1].add_patch(patch)
-                            polygon = Polygon(np.c_[contour[:, 1], contour[:, 0]])
-                            poi = polylabel(polygon, tolerance=0.1)
-                            x, y = poi.x, poi.y
-                            # axes[-1].plot(x, y, 'o', color=to_hex(color_map[annotation_id]/255))
-                            delta_xy = np.array([x - xc, y - yc])
-                            distance_xy = np.linalg.norm(delta_xy)
-                            axes[-1].annotate(
-                                name_map[int(annotation_id)],
-                                (x, y),
-                                np.array([x, y]) + (1.1 * slice_radius - distance_xy) * delta_xy / distance_xy,
-                                ha="left", va="bottom",
-                                fontsize=5,
-                                color=to_hex(color_map[annotation_id]/255),
-                                arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
-                                wrap=True,
-                            )
+                        contours = find_contours(region_mask, 0.5)
+                        # The algorithm sometimes identifies spurious contours around the corners of the region.
+                        # We hence only plot the largest contour.
+                        contour = sorted(contours, key = lambda x : len(x))[-1]
+                        patch = plt.Polygon(np.c_[contour[:, 1], contour[:, 0]], color=to_hex(color_map[annotation_id]/255))
+                        axes[-1].add_patch(patch)
+                        polygon = Polygon(np.c_[contour[:, 1], contour[:, 0]])
+                        poi = polylabel(polygon, tolerance=0.1)
+                        x, y = poi.x, poi.y
+                        # axes[-1].plot(x, y, 'o', color=to_hex(color_map[annotation_id]/255))
+                        delta_xy = np.array([x - xc, y - yc])
+                        distance_xy = np.linalg.norm(delta_xy)
+                        axes[-1].annotate(
+                            name_map[int(annotation_id)],
+                            (x, y),
+                            np.array([x, y]) + (1.1 * slice_radius - distance_xy) * delta_xy / distance_xy,
+                            ha="left", va="bottom",
+                            fontsize=5,
+                            color=to_hex(color_map[annotation_id]/255),
+                            arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
+                            wrap=True,
+                        )
 
             # plot and label samples
             for _, row in df[df["slice_number"] == slice_number].iterrows():
