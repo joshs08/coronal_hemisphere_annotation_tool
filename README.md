@@ -2,9 +2,9 @@
 
 # Coronal Hemisphere Annotation Tool (CHAT)
 
-The coronal hemisphere annotation tool is a pipeline for annotating
-samples from mouse coronal slice hemispheres with the Allen Brain
-Atlas.
+The coronal hemisphere annotation tool (CHAT; pronounced 'shah' with a
+questionable french accent) is a pipeline for annotating samples from
+mouse coronal slice hemispheres with the Allen Brain Atlas.
 
 As inputs, it takes (a) microscopy autofluorescence images of mouse
 coronal slice hemispheres and (b) sample data in CSV format including
