@@ -19,7 +19,7 @@ from pathlib import Path
 from matplotlib.backends import backend_pdf
 from matplotlib.colors import to_hex
 from skimage.measure import label, find_contours
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, LineString
 from shapely.ops import polylabel
 from itertools import combinations
 from scipy.optimize import minimize, NonlinearConstraint
@@ -114,6 +114,10 @@ if __name__ == "__main__":
                 y = contour[:, 0]
                 axes[-1].plot(x, y, "#677e8c", linewidth=1.0)
 
+            # get the contour around the outside of the slice
+            contour = sorted(contours, key = lambda x : len(x))[-1]
+            slice_contour = Polygon(np.c_[contour[:, 1], contour[:, 0]])
+
             # plot region contours
             for annotation_id in np.unique(annotation):
                 if annotation_id > 0: # 0 is background
@@ -127,7 +131,7 @@ if __name__ == "__main__":
 
             if len(subset) > 0:
 
-                # compute slice radius
+                # compute slice radius, i.e. maximum distance from center
                 slice_radius = 0
                 center = np.array([yc, xc])
                 for contour in contours:
@@ -150,10 +154,12 @@ if __name__ == "__main__":
                 if len(vectors) > 1:
                     vectors = get_well_spaced_vectors(vectors)
                 for xy, vector, label in zip(coordinates, vectors, labels):
+                    line = LineString([center, center + 1.1 * slice_radius * vector])
+                    intersection = np.array(slice_contour.intersection(line).coords[:][-1])
                     axes[-1].annotate(
                         label,
                         xy,
-                        center + 1.1 * slice_radius * vector,
+                        center + 1.1 * (intersection - center),
                         ha="right", va="bottom",
                         fontsize=5,
                         arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
@@ -187,10 +193,12 @@ if __name__ == "__main__":
                 if len(vectors) > 1:
                     vectors = get_well_spaced_vectors(vectors)
                 for xy, vector, label in zip(region_coordinates, vectors, region_labels):
+                    line = LineString([center, center + 1.1 * slice_radius * vector])
+                    intersection = np.array(slice_contour.intersection(line).coords[:][-1])
                     axes[-1].annotate(
                         label,
                         xy,
-                        center + 1.1 * slice_radius * vector,
+                        center + 1.1 * (intersection - center),
                         ha="left", va="bottom",
                         fontsize=5,
                         arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
