@@ -24,6 +24,7 @@ from shapely.ops import polylabel
 from itertools import combinations
 from scipy.optimize import minimize, NonlinearConstraint
 
+
 def get_well_spaced_angles(angles, minimum_delta_angle=2*np.pi/36):
 
     def get_angle_difference(a, b):
@@ -122,17 +123,17 @@ if __name__ == "__main__":
                         y = contour[:, 0]
                         axes[-1].plot(x, y, color=to_hex(color_map[annotation_id]/255), linewidth=0.25)
 
-            # compute slice radius
-            slice_radius = 0
-            center = np.array([yc, xc])
-            for contour in contours:
-                delta = contour - center[np.newaxis, :]
-                distance = np.linalg.norm(delta, axis=1)
-                slice_radius = max(slice_radius, np.max(distance))
-
             subset = df[df["slice_number"] == slice_number]
 
             if len(subset) > 0:
+
+                # compute slice radius
+                slice_radius = 0
+                center = np.array([yc, xc])
+                for contour in contours:
+                    delta = contour - center[np.newaxis, :]
+                    distance = np.linalg.norm(delta, axis=1)
+                    slice_radius = max(slice_radius, np.max(distance))
 
                 # plot sample locations
                 for _, row in subset.iterrows():
