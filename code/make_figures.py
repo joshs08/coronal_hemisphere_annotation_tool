@@ -149,17 +149,18 @@ if __name__ == "__main__":
 
                 # annotate samples; prevent labels from overlapping
                 labels = subset["barcode"]
+                indices = subset.index.values
                 center = np.array([xc, yc])
                 coordinates = subset[["segmentation_col", "segmentation_row"]].values
                 vectors = coordinates - center[np.newaxis, :]
                 vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
                 if len(vectors) > 1:
                     vectors = get_well_spaced_vectors(vectors)
-                for xy, vector, label in zip(coordinates, vectors, labels):
+                for xy, vector, label, idx in zip(coordinates, vectors, labels, indices):
                     line = LineString([center, center + 1.1 * slice_radius * vector])
                     intersection = np.array(slice_contour.intersection(line).coords[:][-1])
                     axes[-1].annotate(
-                        label,
+                        f"{label} ({idx})",
                         xy,
                         center + 1.1 * (intersection - center),
                         ha="right", va="bottom",
