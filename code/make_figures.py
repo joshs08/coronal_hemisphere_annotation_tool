@@ -25,7 +25,7 @@ from itertools import combinations
 from scipy.optimize import minimize, NonlinearConstraint
 
 
-def get_well_spaced_angles(angles, minimum_delta_angle=2*np.pi/36):
+def get_well_spaced_angles(angles, minimum_delta_angle=np.pi/9):
 
     def get_angle_difference(a, b):
         return np.abs(np.arctan2(np.sin(a - b), np.cos(a - b)))
