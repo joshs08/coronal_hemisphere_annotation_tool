@@ -89,8 +89,10 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------------
 
     print("Plotting slices & annotations...")
+    date, = df["date"].unique()
+    date = date.replace("-", "_")
 
-    with backend_pdf.PdfPages(output_directory / "individual_slices.pdf") as pdf:
+    with backend_pdf.PdfPages(output_directory / f"individual_slices_{date}.pdf") as pdf:
 
         # for ii in range(total_slices):
         for ii in range(total_slices):
