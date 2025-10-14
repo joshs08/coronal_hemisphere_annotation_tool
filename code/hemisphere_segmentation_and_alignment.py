@@ -464,7 +464,7 @@ def segment_coronal_slice_hemisphere(img, midline, sample_ids=None, sample_coord
     delta = midline[1] - midline[0]
     angle = get_angle(delta[0], -delta[1]) # y-axis inverted for images
     midpoint = midline[0] + 0.5 * delta
-    rotated = rotate(equalized, 90-angle, resize=False, center=midpoint, preserve_range=True)
+    rotated = rotate(equalized, 90-angle, resize=False, center=midpoint[::-1], preserve_range=True)
 
     # remove everything right of the midline
     single_hemisphere = rotated[:, :int(np.ceil(midpoint[0]))].copy()
