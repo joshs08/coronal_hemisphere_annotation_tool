@@ -5,7 +5,7 @@ and the isolated samples including their barcode.
 
 Example
 -------
-python code/05_make_figures.py test/segmentation/ test/annotation/ test/sample_data.csv test/figures/
+python code/make_figures.py test/segmentation/ test/annotation/ test/sample_data.csv test/figures/
 
 """
 
