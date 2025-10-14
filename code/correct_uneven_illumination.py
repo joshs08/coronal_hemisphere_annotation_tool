@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 from skimage.io import imread
 from scipy.optimize import curve_fit
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, RegularGridInterpolator
 
 
 def correct_uneven_illumination(image, border_width=50, interpolate_between="frame", show=False, fill_nans=True):
@@ -82,17 +82,20 @@ def correct_uneven_illumination(image, border_width=50, interpolate_between="fra
     else:
         raise ValueError(f"Variable `interpolate_between` one of: 'frame', 'top-bottom', 'left-right', or 'corners', not {interpolate_between}!")
 
-    rows, columns = np.where(image_to_interpolate)
+    points = np.transpose(np.where(image_to_interpolate))
+    values = image_to_interpolate[points[:, 0], points[:, 1]]
+    desired = np.transpose(np.where(np.ones_like(image)))
     image_correction = griddata(
-        points = np.c_[rows, columns],
-        values = image_to_interpolate[rows, columns],
-        xi = np.transpose(np.where(np.ones_like(image))),
+        points = points,
+        values = values,
+        xi = desired,
         method="linear",
     )
     image_correction = image_correction.reshape(image.shape)
 
     # Fill in NaNs if there are any in the interpolated image.
     if np.any(np.isnan(image_correction)) & fill_nans:
+        warnings.warn("Interpolation yielded NaNs. Re-running interpolation to fill these in.")
         rows, columns = np.where(~np.isnan(image_correction))
         image_correction = griddata(
             points = np.c_[rows, columns],
