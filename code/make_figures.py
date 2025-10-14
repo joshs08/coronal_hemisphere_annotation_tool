@@ -94,7 +94,6 @@ if __name__ == "__main__":
 
     with backend_pdf.PdfPages(output_directory / f"individual_slices_{date}.pdf") as pdf:
 
-        # for ii in range(total_slices):
         for ii in range(total_slices):
             print(f"{ii+1} / {total_slices}")
             slice_number = slice_numbers[ii]
@@ -103,18 +102,20 @@ if __name__ == "__main__":
             annotation   = annotations[ii]
             sample_mask  = sample_masks[ii]
 
-            fig, axes = plt.subplots(2, 1, sharex=True, sharey=True, figsize=(6, 10))
+            fig, axes = plt.subplots(3, 1, sharex=True, sharey=True, figsize=(6, 12))
             for ax in axes:
                 ax.axis("off")
                 ax.set_aspect("equal")
             axes[0].imshow(slice_image, cmap="gray")
+            axes[2].imshow(slice_image, cmap="gray")
 
             # plot slice contour
             contours = find_contours(slice_mask, 0.5)
             for contour in contours:
                 x = contour[:, 1]
                 y = contour[:, 0]
-                axes[-1].plot(x, y, "#677e8c", linewidth=1.0)
+                axes[1].plot(x, y, "#677e8c", linewidth=1.0)
+                axes[2].plot(x, y, "#677e8c", linewidth=1.0)
 
             # get the contour around the outside of the slice
             contour = sorted(contours, key = lambda x : len(x))[-1]
@@ -127,7 +128,8 @@ if __name__ == "__main__":
                     for contour in find_contours(region_mask, 0.5):
                         x = contour[:, 1]
                         y = contour[:, 0]
-                        axes[-1].plot(x, y, color=to_hex(color_map[annotation_id]/255), linewidth=0.25)
+                        axes[1].plot(x, y, color=to_hex(color_map[annotation_id]/255), linewidth=0.25)
+                        axes[2].plot(x, y, color=to_hex(color_map[annotation_id]/255), linewidth=0.25)
 
             subset = df[df["slice_number"] == slice_number]
 
@@ -145,7 +147,8 @@ if __name__ == "__main__":
                 for _, row in subset.iterrows():
                     x = row["segmentation_col"]
                     y = row["segmentation_row"]
-                    axes[-1].plot(x, y, linestyle="", marker='o', markersize=1, color=row["subclass_color"])
+                    axes[1].plot(x, y, linestyle="", marker='o', markersize=1, color=row["subclass_color"])
+                    axes[2].plot(x, y, linestyle="", marker='o', markersize=1, color=row["subclass_color"])
 
                 # annotate samples; prevent labels from overlapping
                 labels = subset["barcode"]
@@ -159,12 +162,23 @@ if __name__ == "__main__":
                 for xy, vector, label, idx in zip(coordinates, vectors, labels, indices):
                     line = LineString([center, center + 1.1 * slice_radius * vector])
                     intersection = np.array(slice_contour.intersection(line).coords[:][-1])
-                    axes[-1].annotate(
+                    axes[1].annotate(
                         f"{label} ({idx})",
                         xy,
                         center + 1.1 * (intersection - center),
                         ha="right", va="bottom",
                         fontsize=5,
+                        color="#677e8c",
+                        arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
+                        wrap=True,
+                    )
+                    axes[2].annotate(
+                        f"{label} ({idx})",
+                        xy,
+                        center + 1.1 * (intersection - center),
+                        ha="right", va="bottom",
+                        fontsize=5,
+                        color="#677e8c",
                         arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
                         wrap=True,
                     )
@@ -182,7 +196,9 @@ if __name__ == "__main__":
                     # We hence only plot the largest contour.
                     contour = sorted(contours, key = lambda x : len(x))[-1]
                     patch = plt.Polygon(np.c_[contour[:, 1], contour[:, 0]], color=to_hex(color_map[annotation_id]/255))
-                    axes[-1].add_patch(patch)
+                    axes[1].add_patch(patch)
+                    patch = plt.Polygon(np.c_[contour[:, 1], contour[:, 0]], color=to_hex(color_map[annotation_id]/255))
+                    axes[2].add_patch(patch)
                     polygon = Polygon(np.c_[contour[:, 1], contour[:, 0]])
                     poi = polylabel(polygon, tolerance=0.1)
                     x, y = poi.x, poi.y
@@ -198,12 +214,23 @@ if __name__ == "__main__":
                 for xy, vector, label in zip(region_coordinates, vectors, region_labels):
                     line = LineString([center, center + 1.1 * slice_radius * vector])
                     intersection = np.array(slice_contour.intersection(line).coords[:][-1])
-                    axes[-1].annotate(
+                    axes[1].annotate(
                         label,
                         xy,
                         center + 1.1 * (intersection - center),
                         ha="left", va="bottom",
                         fontsize=5,
+                        color="#677e8c",
+                        arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
+                        wrap=True,
+                    )
+                    axes[2].annotate(
+                        label,
+                        xy,
+                        center + 1.1 * (intersection - center),
+                        ha="left", va="bottom",
+                        fontsize=5,
+                        color="#677e8c",
                         arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
                         wrap=True,
                     )
