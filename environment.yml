@@ -1,4 +1,4 @@
-name: chat
+name: chat_2
 channels:
   - conda-forge
   - defaults

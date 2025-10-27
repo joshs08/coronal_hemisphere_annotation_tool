@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
     print("Constructing the ABA annotation volume...")
     resolution = 25
-    reference_space_key = os.path.join('annotation', 'ccf_2017')
+    reference_space_key = "annotation/ccf_2017"
     rspc = ReferenceSpaceCache(resolution, reference_space_key, manifest=aba_directory / 'manifest.json')
     tree = rspc.get_structure_tree(structure_graph_id=1) # ID 1 is the adult mouse structure graph
     annotation, meta = rspc.get_annotation_volume()
