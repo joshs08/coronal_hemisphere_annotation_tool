@@ -32,7 +32,7 @@ existing_dates = {p.name for p in Path(output_dir).iterdir() if p.is_dir()} if P
 converted = {d: to_yyyy_mm_dd(d) for d in image_dates}
 image_dates = [d for d, conv in converted.items() if conv not in existing_dates]
 
-#image_dates = ["23_04_19"]
+#image_dates = ["02_10_18"]
 
 slice_direction = "caudal-rostro"
 slice_thickness = 150
@@ -52,9 +52,11 @@ for image_date in image_dates:
                           join_dir(output_dir_date, "figures"))
 
     t0 = time.time()
+    
     run(sys.executable, code_dir/"extract_sample_data.py", str(input_csv), "date", str(date), str(sample_data_csv), "--show")
     run(sys.executable, code_dir/"convert_sample_coordinates.py", str(sample_data_csv), str(input_image_dir))
     run(sys.executable, code_dir/"hemisphere_segmentation_and_alignment.py", str(input_image_dir), str(sample_data_csv), str(seg), "--midlines", str(midlines_date_dir))
+    #run(sys.executable, code_dir/"exclude_damaged_slices.py", str(seg), str(seg))
     # Register using deep slice
     run(sys.executable, code_dir/"image_registration.py", str(seg), str(reg),
         "--slice_direction", str(slice_direction), "--slice_thickness", str(slice_thickness))
@@ -62,5 +64,6 @@ for image_date in image_dates:
     run(sys.executable, code_dir/"image_annotation.py", str(os.path.join(reg, "deepslice_registration_results.csv")), str(allen), str(ann))
     # Annotate samples with known image locations
     run(sys.executable, code_dir/"sample_annotation.py", str(ann), str(sample_data_csv))
+    
     run(sys.executable, code_dir/"make_figures.py", str(seg), str(ann), str(sample_data_csv), str(fig))
     print(f"✓ {date} finished in {time.time()-t0:.1f}s")

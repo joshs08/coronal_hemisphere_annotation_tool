@@ -22,6 +22,8 @@ https://github.com/PolarBean/DeepSlice
 from pathlib import Path
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from DeepSlice import DSModel
+import numpy as np
+import os
 
 if __name__ == "__main__":
 
@@ -32,8 +34,18 @@ if __name__ == "__main__":
     parser.add_argument("--slice_direction", help="Either rostro-caudal or caudal-rostro.", type=str, default="caudal-rostro")
     args = parser.parse_args()
 
+
+
     Model = DSModel("mouse")
     Model.predict(args.image_directory, ensemble=True, section_numbers=True)
+
+    try:
+        bad_sections = np.load(os.path.join(args.image_directory, "exclude.npy"), allow_pickle=True).tolist()
+        if len(bad_sections) > 0: 
+            Model.set_bad_sections(bad_sections=bad_sections)
+    except:
+        print("Exclusion not yet run")
+        
     if args.slice_direction == "caudal-rostro":
         Model.enforce_index_spacing(section_thickness=-args.slice_thickness)
     elif args.slice_direction == "rostro-caudal":

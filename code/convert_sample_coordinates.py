@@ -23,6 +23,7 @@ python code/convert_sample_coordinates.py test/sample_data.csv test/ --show
 import glob
 import numpy as np
 import pandas as pd
+import os
 
 from pathlib import Path
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
@@ -41,7 +42,8 @@ if __name__ == "__main__":
     data = pd.read_csv(args.sample_data)
 
     # glob image file path and order by slice number
-    filepaths = [Path(path) for path in glob.glob(args.image_directory + "*.tif")]
+    dir_with_sep = os.path.join(args.image_directory, '')
+    filepaths = [Path(path) for path in glob.glob(dir_with_sep + "*.tif")]
     slice_numbers = [next(int(substring) for substring in path.stem.split("_") if substring.isdigit()) for path in filepaths]
     order = np.argsort(slice_numbers)
     slice_numbers = [slice_numbers[ii] for ii in order]
