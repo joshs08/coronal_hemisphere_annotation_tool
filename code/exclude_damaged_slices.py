@@ -16,6 +16,9 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+import os
+import csv
+from collections import Counter
 
 
 def natural_key(s: str):
@@ -35,10 +38,45 @@ def wait_for_key(fig):
     return pressed["key"]
 
 
-def main(folder: str):
+def extract_index_from_name(name: str):
+    """Parse integer index from the filename (digits after 's')."""
+    stem = Path(name).stem
+    m = re.search(r's(\d+)$', stem) or re.search(r's(\d+)', stem)
+    return int(m.group(1)) if m else None
+
+
+def load_csv_counts(csv_path: Path) -> dict[int, int]:
+    """Count occurrences of image_index values in the CSV."""
+    counts = Counter()
+    with csv_path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if "image_index" not in (reader.fieldnames or []):
+            raise SystemExit("CSV missing required 'image_index' column.")
+        for row in reader:
+            val = row.get("image_index")
+            if val is None:
+                continue
+            # robust int parsing (handles '94', '094', '94.0', etc.)
+            s = str(val).strip()
+            m = re.search(r'\d+', s)
+            if not m:
+                continue
+            idx = int(m.group(0))
+            counts[idx] += 1
+    return dict(counts)
+
+def main(folder: str, pdf_path: str, csv_path: str):
+    pdf_dir = Path(pdf_path).expanduser().resolve()
+    os.startfile(pdf_path)
     img_dir = Path(folder).expanduser().resolve()
     if not img_dir.is_dir():
         raise SystemExit(f"Not a directory: {img_dir}")
+    
+    csv_file = Path(csv_path).expanduser().resolve()
+    if not csv_file.is_file():
+        raise SystemExit(f"CSV not found: {csv_file}")
+
+    counts_by_index = load_csv_counts(csv_file)
 
     files = [p for p in img_dir.iterdir() if p.is_file() and p.suffix.lower() == ".png"]
     files.sort(key=lambda p: natural_key(p.name))
@@ -50,12 +88,14 @@ def main(folder: str):
     for p in files:
         # Load image
         img = mpimg.imread(str(p))
+        idx = extract_index_from_name(p.name)
+        match_count = counts_by_index.get(idx, 0) if idx is not None else 0
 
         # Display
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.imshow(img)
-        ax.set_title(p.name)
+        ax.set_title(f"{p.name}  |  CSV matches: {match_count}")        
         ax.axis("off")
 
         # Wait for valid key
@@ -70,7 +110,7 @@ def main(folder: str):
             fig = plt.figure()
             ax = fig.add_subplot(111)
             ax.imshow(img)
-            ax.set_title(p.name)
+            ax.set_title(f"{p.name}  |  CSV matches: {match_count}")
             ax.axis("off")
 
     out_path = img_dir / "exclude.npy"
@@ -83,4 +123,4 @@ def main(folder: str):
 
 if __name__ == "__main__":
     import sys
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2], sys.argv[3])

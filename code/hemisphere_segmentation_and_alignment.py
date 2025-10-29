@@ -29,7 +29,7 @@ Example
 python code/hemisphere_segmentation_and_alignment.py test/ test/sample_data.csv test/segmentation/ --show
 
 """
-
+import cv2
 import glob
 
 import numpy as np
@@ -53,6 +53,52 @@ from skimage.morphology import (
 )
 from skimage.measure import label, find_contours
 
+def rotate_image_and_coords(image, angle, center=None,  coords=None):
+    """
+    Rotate an image and a set of coordinates by a given angle.
+    Parameters:
+    - image: Input image (numpy array).
+    - coords: List or array of (x, y) tuples representing the coordinates.
+    - angle: The rotation angle in degrees.
+    - center: The center of rotation. If None, the image center is used.
+
+    Returns:
+    - rotated_image: The rotated image.
+    - rotated_coords: The rotated coordinates.
+    """
+
+    # Get image dimensions
+    h, w = image.shape[:2]
+
+    # Define the center of rotation
+    if center is None:
+
+        center = (w // 2, h // 2)
+
+    # Calculate the rotation matrix
+    rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+
+    # Perform the rotation on the image
+    rotated_image = cv2.warpAffine(image, rotation_matrix, (w, h))
+
+    if coords is None:
+        rotated_coords = []
+    else:
+        # Rotate the coordinates
+        rotated_coords = []
+
+        for (x, y) in coords:
+
+            # Convert coordinates to homogenous coordinates (x, y, 1)
+            coord = np.array([x, y, 1])
+
+            # Apply the rotation matrix
+            rotated_coord = rotation_matrix.dot(coord)
+
+            # Store the rotated coordinates
+            rotated_coords.append((int(rotated_coord[0]), int(rotated_coord[1])))
+
+    return rotated_image, rotated_coords
 
 def equalize(img):
     minimum = np.percentile(img[img>0], 2)
@@ -456,15 +502,20 @@ def rotate_points(p, origin=(0, 0), degrees=0):
     return np.squeeze((R @ (p.T-o.T) + o.T).T)
 
 
-def segment_coronal_slice_hemisphere(img, midline, sample_ids=None, sample_coordinates=None, show=False):
+def segment_coronal_slice_hemisphere(img, midline, sample_ids=None, sample_coordinates=None, show=False, img_pad=200):
     # improve contrast
     equalized = equalize(np.array(img))
 
+    # pad image to allow resize=False in rotate, which prevents an image/cell coord mismatch
+    padded = np.pad(equalized, ((img_pad, img_pad), (img_pad, img_pad)),
+                    mode='constant', constant_values=np.percentile(equalized, 1))
+    midline += img_pad
     # adjust rotation
     delta = midline[1] - midline[0]
     angle = get_angle(delta[0], -delta[1]) # y-axis inverted for images
     midpoint = midline[0] + 0.5 * delta
-    rotated = rotate(equalized, 90-angle, resize=False, center=midpoint[::-1], preserve_range=True)
+    rotated = rotate(padded, 90-angle, resize=False, center=midpoint[::-1], preserve_range=True)
+    #rotated, _ = rotate_image_and_coords(equalized, 90-angle, center=tuple(midpoint))
 
     # remove everything right of the midline
     single_hemisphere = rotated[:, :int(np.ceil(midpoint[0]))].copy()
@@ -492,8 +543,9 @@ def segment_coronal_slice_hemisphere(img, midline, sample_ids=None, sample_coord
     if sample_ids is None:
         return mirrored_image, mirrored_mask
     else:
-        cols, rows = sample_coordinates.transpose()
-        sample_mask = np.full_like(equalized, np.nan)
+        sample_coordinates_padded = sample_coordinates + img_pad
+        cols, rows = sample_coordinates_padded.transpose()
+        sample_mask = np.full_like(padded, np.nan)
         sample_mask[np.round(rows).astype(int), np.round(cols).astype(int)] = sample_ids
 
         # Unfortunately, image rotation doesn't work for our purpose as the rotation "smears" pixel intensities and thus destroys the sample identity.
@@ -510,10 +562,10 @@ def segment_coronal_slice_hemisphere(img, midline, sample_ids=None, sample_coord
         if show:
             fig, (ax1, ax2) = plt.subplots(1, 2)
             try:
-                ax1.imshow(equalized + 200 * binary_dilation(~np.isnan(sample_mask), disk(10, decomposition="crosses")), cmap="gray")
+                ax1.imshow(padded + 200 * binary_dilation(~np.isnan(sample_mask), disk(10, decomposition="crosses")), cmap="gray")
                 ax2.imshow(trimmed_segmented + 200 * binary_dilation(~np.isnan(trimmed_sample_mask), disk(10, decomposition="crosses")), cmap="gray")
             except TypeError:
-                ax1.imshow(equalized + 200 * binary_dilation(~np.isnan(sample_mask), disk(10)), cmap="gray")
+                ax1.imshow(padded + 200 * binary_dilation(~np.isnan(sample_mask), disk(10)), cmap="gray")
                 ax2.imshow(trimmed_segmented + 200 * binary_dilation(~np.isnan(trimmed_sample_mask), disk(10)), cmap="gray")
 
         return mirrored_image, mirrored_mask, mirrored_sample_mask
@@ -603,10 +655,10 @@ if __name__ == "__main__":
     print("Exporting images...")
     # save image stacks
     np.savez(output_directory / "segmentation_results.npz",
-             slice_images  = slice_image_stack,
-             slice_masks   = slice_mask_stack,
-             sample_masks  = sample_mask_stack,
-             slice_numbers = slice_numbers,
+            slice_images  = slice_image_stack,
+            slice_masks   = slice_mask_stack,
+            sample_masks  = sample_mask_stack,
+            slice_numbers = slice_numbers,
     )
 
     # export slice images as PNGs for DeepSlice / QuickNII
@@ -624,3 +676,4 @@ if __name__ == "__main__":
         sample_data.at[sample_id, "segmentation_row"] = row
         sample_data.at[sample_id, "segmentation_col"] = col
     sample_data.reset_index().to_csv(args.sample_data, index=False)
+    plt.show()

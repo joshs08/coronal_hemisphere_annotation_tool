@@ -161,7 +161,12 @@ if __name__ == "__main__":
                     vectors = get_well_spaced_vectors(vectors)
                 for xy, vector, label, idx in zip(coordinates, vectors, labels, indices):
                     line = LineString([center, center + 1.1 * slice_radius * vector])
-                    intersection = np.array(slice_contour.intersection(line).coords[:][-1])
+                    # error index out of range
+                    try:
+                        intersection = np.array(slice_contour.intersection(line).coords[:][-1])
+                    except Exception as e:
+                        print(e)
+                        print(f"Slice: {ii}, cell pos: {xy}, vector: {vector}, label: {label}, cell index: {idx}")
                     axes[1].annotate(
                         f"{label} ({idx})",
                         xy,
@@ -213,7 +218,12 @@ if __name__ == "__main__":
                     vectors = get_well_spaced_vectors(vectors)
                 for xy, vector, label in zip(region_coordinates, vectors, region_labels):
                     line = LineString([center, center + 1.1 * slice_radius * vector])
-                    intersection = np.array(slice_contour.intersection(line).coords[:][-1])
+                    try:
+                        intersection = np.array(slice_contour.intersection(line).coords[:][-1])
+                    except Exception as e:
+                        print(e)
+                        print(f"Slice: {ii}, cell pos: {xy}, vector: {vector}, label: {label}, cell index: {idx}")
+                    
                     axes[1].annotate(
                         label,
                         xy,
