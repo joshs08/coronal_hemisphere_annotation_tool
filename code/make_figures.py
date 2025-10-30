@@ -13,7 +13,9 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-
+import re
+import glob
+from tifffile import imread
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from pathlib import Path
 from matplotlib.backends import backend_pdf
@@ -24,6 +26,14 @@ from shapely.ops import polylabel
 from itertools import combinations
 from scipy.optimize import minimize, NonlinearConstraint
 
+def equalize(img):
+    minimum = np.percentile(img[img>0], 2)
+    maximum = np.percentile(img[img>0], 98)
+    equalized = np.clip(img, minimum, maximum)
+    equalized -= minimum
+    equalized /= maximum - minimum
+    equalized *= 255
+    return equalized
 
 def get_well_spaced_angles(angles, minimum_delta_angle=np.pi/9):
 
@@ -57,6 +67,7 @@ if __name__ == "__main__":
     parser.add_argument("annotation",       help="/path/to/annotation/directory/",   type=str)
     parser.add_argument("sample_data",      help="/path/to/sample_data.csv",         type=str)
     parser.add_argument("output_directory", help="/path/to/ouput/directory/",        type=str)
+    parser.add_argument("image_directory", help="/path/to/image/directory/",        type=str)
     args = parser.parse_args()
 
     output_directory = Path(args.output_directory)
@@ -86,10 +97,19 @@ if __name__ == "__main__":
     xc = total_cols / 2
     yc = total_rows / 2
 
+    # load original .tif 
+    raw_image_paths = [Path(path) for path in glob.glob(args.image_directory + "*.tif")]
+    raw_slice_numbers = [next(int(substring) for substring in path.stem.split("_") if substring.isdigit()) for path in raw_image_paths]
+    raw_order = np.argsort(raw_slice_numbers)
+    raw_slice_numbers = [raw_slice_numbers[ii] for ii in raw_order]
+    raw_image_paths = [raw_image_paths[ii] for ii in raw_order]
+
     # --------------------------------------------------------------------------------
 
     print("Plotting slices & annotations...")
     date, = df["date"].unique()
+    fmt = lambda s: re.sub(r'^(\d{2})/(\d{2})/(\d{4})$', r'\3_\2_\1', s)
+    date = fmt(date)
     date = date.replace("-", "_")
 
     with backend_pdf.PdfPages(output_directory / f"individual_slices_{date}.pdf") as pdf:
@@ -101,13 +121,16 @@ if __name__ == "__main__":
             slice_mask   = slice_masks[ii]
             annotation   = annotations[ii]
             sample_mask  = sample_masks[ii]
+            raw_image    = imread(raw_image_paths[ii])
+            raw_image    = equalize(raw_image)
 
-            fig, axes = plt.subplots(3, 1, sharex=True, sharey=True, figsize=(6, 12))
+            fig, axes = plt.subplots(4, 1, sharex=True, sharey=True, figsize=(6, 12))
             for ax in axes:
                 ax.axis("off")
                 ax.set_aspect("equal")
             axes[0].imshow(slice_image, cmap="gray")
             axes[2].imshow(slice_image, cmap="gray")
+            axes[3].imshow(raw_image, cmap="gray")
 
             # plot slice contour
             contours = find_contours(slice_mask, 0.5)
@@ -167,6 +190,7 @@ if __name__ == "__main__":
                     except Exception as e:
                         print(e)
                         print(f"Slice: {ii}, cell pos: {xy}, vector: {vector}, label: {label}, cell index: {idx}")
+                        intersection = center
                     axes[1].annotate(
                         f"{label} ({idx})",
                         xy,
@@ -223,7 +247,7 @@ if __name__ == "__main__":
                     except Exception as e:
                         print(e)
                         print(f"Slice: {ii}, cell pos: {xy}, vector: {vector}, label: {label}, cell index: {idx}")
-                    
+                        intersection = center 
                     axes[1].annotate(
                         label,
                         xy,

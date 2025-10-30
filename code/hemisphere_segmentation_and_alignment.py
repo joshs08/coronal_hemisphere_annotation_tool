@@ -31,6 +31,7 @@ python code/hemisphere_segmentation_and_alignment.py test/ test/sample_data.csv 
 """
 import cv2
 import glob
+import skimage
 
 import numpy as np
 import matplotlib as mpl
@@ -109,34 +110,66 @@ def equalize(img):
     equalized *= 255
     return equalized
 
+def equalize_with_mask(img,mask):
+    image_slice = img * mask
+    equalized = skimage.exposure.rescale_intensity(image_slice,in_range='image',out_range=(0,255))
+    log_adjusted = skimage.exposure.adjust_log(equalized,gain=1)
+    equalized = skimage.exposure.rescale_intensity(log_adjusted,in_range='image',out_range=(0,255))
+    return equalized
+
 
 def select_midline(img, with_refinement=True):
     fig, ax = plt.subplots(figsize=(12, 10))
-    fig.suptitle("Select the ventral and dorsal endpoints of the midline.")
-    ax.imshow(img, cmap='gray')
-    midline = np.array(ginput(fig, 2, blit=True))
 
-    if with_refinement:
-        pad = 500
-        fig.suptitle("Adjust the ventral endpoint of the midline.")
-        ax.plot(*midline[0], 'y+', markersize=10)
-        ax.axis((midline[0, 0]-pad, midline[0, 0]+pad, midline[0, 1]+pad, midline[0, 1]-pad))
-        out = np.squeeze(ginput(fig, 1, blit=True))
-        if np.any(out):
-            midline[0] = out
+    while True:
+        fig.suptitle("Select the ventral and dorsal (bottom and top) endpoints of the midline.")
+        ax.clear()
+        ax.imshow(img, cmap='gray')
+        midline = np.array(ginput(fig, 2, blit=True))
 
-        fig.suptitle("Adjust the dorsal endpoint of the midline.")
-        ax.plot(*midline[1], 'y+', markersize=10)
-        ax.axis((midline[1, 0]-pad, midline[1, 0]+pad, midline[1, 1]+pad, midline[1, 1]-pad))
-        out = np.squeeze(ginput(fig, 1, blit=True))
-        if np.any(out):
-            midline[1] = out
+        if with_refinement:
+            pad = 500
+            fig.suptitle("Adjust the ventral (bottom) endpoint of the midline.")
+            ax.plot(*midline[0], 'y+', markersize=10)
+            ax.axis((midline[0, 0]-pad, midline[0, 0]+pad, midline[0, 1]+pad, midline[0, 1]-pad))
+            out = np.squeeze(ginput(fig, 1, blit=True))
+            if np.any(out):
+                midline[0] = out
 
-    plt.close(fig)
+            fig.suptitle("Adjust the dorsal (top) endpoint of the midline.")
+            ax.plot(*midline[1], 'y+', markersize=10)
+            ax.axis((midline[1, 0]-pad, midline[1, 0]+pad, midline[1, 1]+pad, midline[1, 1]-pad))
+            out = np.squeeze(ginput(fig, 1, blit=True))
+            if np.any(out):
+                midline[1] = out
 
-    # print(midline)
+        # show the whole image with the proposed midline
+        ax.clear()
+        ax.imshow(img, cmap='gray')
+        ax.plot([midline[0, 0], midline[1, 0]],
+                [midline[0, 1], midline[1, 1]],
+                'y-', linewidth=2)
+        ax.plot(*midline[0], 'y+', markersize=12)
+        ax.plot(*midline[1], 'y+', markersize=12)
+        ax.axis((0, img.shape[1], img.shape[0], 0))
+        fig.suptitle("Press SPACE to accept, or 'x' to try again.")
+        fig.canvas.draw_idle()
 
-    return midline
+        # wait for key press: space = accept, x = retry
+        pressed = {'key': None}
+        def on_key(event):
+            if event.key in (' ', 'x'):
+                pressed['key'] = event.key
+        cid = fig.canvas.mpl_connect('key_press_event', on_key)
+
+        while pressed['key'] not in (' ', 'x'):
+            plt.pause(0.05)
+
+        fig.canvas.mpl_disconnect(cid)
+
+        if pressed['key'] == ' ':
+            plt.close(fig)
+            return midline
 
 
 def blocking_input_loop(figure, event_names, timeout, handler):
@@ -523,6 +556,9 @@ def segment_coronal_slice_hemisphere(img, midline, sample_ids=None, sample_coord
     # isolate slice from background
     segmented, mask = segment(single_hemisphere, show=show)
 
+    # equalise with mask
+    segmented_equalised = equalize_with_mask(segmented, mask)
+
     # crop
     trimmed_segmented, trimmed_mask = trim_excess(segmented, mask, pad=100)
 
@@ -594,6 +630,7 @@ if __name__ == "__main__":
     parser.add_argument("output_directory",            help="/path/to/output/directory/", type=str)
     parser.add_argument("--midlines",                  help="/path/to/midlines.npy",      type=str, default=None)
     parser.add_argument("--show", action="store_true", help="Display figures.")
+    parser.add_argument("--segment_bool", action="store_true", help="Whether to run segmentation, or only midline selection.")
     args = parser.parse_args()
 
     # create output directory
@@ -622,58 +659,60 @@ if __name__ == "__main__":
     else:
         midlines = np.load(args.midlines)
 
-    print("Segmenting images...")
-    slice_images, slice_masks, sample_masks = [], [], []
-    for (slice_number, filepath, midline) in zip(slice_numbers, filepaths, midlines):
-        print(slice_number, filepath.stem)
-        image = Image.open(filepath)
-        is_in_slice = sample_data["slice_number"] == slice_number
-        if np.any(is_in_slice):
-            slice_image, slice_mask, sample_mask = segment_coronal_slice_hemisphere(
-                image, midline,
-                sample_ids=sample_data[is_in_slice].index.values,
-                sample_coordinates=sample_data.loc[is_in_slice, ["image_col", "image_row"]].values,
-                show=args.show
-            )
-            slice_images.append(slice_image)
-            slice_masks.append(slice_mask)
-            sample_masks.append(sample_mask)
-        else:
-            slice_image, slice_mask = segment_coronal_slice_hemisphere(
-                image, midline,
-                show=args.show
-            )
-            slice_images.append(slice_image)
-            slice_masks.append(slice_mask)
-            sample_masks.append(np.full_like(slice_mask, np.nan))
+    segment_bool = args.segment_bool
+    if not segment_bool:
+        print("Segmenting images...")
+        slice_images, slice_masks, sample_masks = [], [], []
+        for (slice_number, filepath, midline) in zip(slice_numbers, filepaths, midlines):
+            print(slice_number, filepath.stem)
+            image = Image.open(filepath)
+            is_in_slice = sample_data["slice_number"] == slice_number
+            if np.any(is_in_slice):
+                slice_image, slice_mask, sample_mask = segment_coronal_slice_hemisphere(
+                    image, midline,
+                    sample_ids=sample_data[is_in_slice].index.values,
+                    sample_coordinates=sample_data.loc[is_in_slice, ["image_col", "image_row"]].values,
+                    show=args.show
+                )
+                slice_images.append(slice_image)
+                slice_masks.append(slice_mask)
+                sample_masks.append(sample_mask)
+            else:
+                slice_image, slice_mask = segment_coronal_slice_hemisphere(
+                    image, midline,
+                    show=args.show
+                )
+                slice_images.append(slice_image)
+                slice_masks.append(slice_mask)
+                sample_masks.append(np.full_like(slice_mask, np.nan))
 
-    print("Aligning images...")
-    slice_image_stack = convert_to_image_array(slice_images)
-    slice_mask_stack  = convert_to_image_array(slice_masks)
-    sample_mask_stack = convert_to_image_array(sample_masks, np.nan)
+        print("Aligning images...")
+        slice_image_stack = convert_to_image_array(slice_images)
+        slice_mask_stack  = convert_to_image_array(slice_masks)
+        sample_mask_stack = convert_to_image_array(sample_masks, np.nan)
 
-    print("Exporting images...")
-    # save image stacks
-    np.savez(output_directory / "segmentation_results.npz",
-            slice_images  = slice_image_stack,
-            slice_masks   = slice_mask_stack,
-            sample_masks  = sample_mask_stack,
-            slice_numbers = slice_numbers,
-    )
+        print("Exporting images...")
+        # save image stacks
+        np.savez(output_directory / "segmentation_results.npz",
+                slice_images  = slice_image_stack,
+                slice_masks   = slice_mask_stack,
+                sample_masks  = sample_mask_stack,
+                slice_numbers = slice_numbers,
+        )
 
-    # export slice images as PNGs for DeepSlice / QuickNII
-    for slice_number, img in zip(slice_numbers, slice_image_stack):
-        Image.fromarray(img).convert("L").save(output_directory / f"brain_slice_s{slice_number:03d}.png")
+        # export slice images as PNGs for DeepSlice / QuickNII
+        for slice_number, img in zip(slice_numbers, slice_image_stack):
+            Image.fromarray(img).convert("L").save(output_directory / f"brain_slice_s{slice_number:03d}.png")
 
-    print("Exporting sample coordinates...")
-    # save out sample masks as pixel coordinates
-    slice_numbers, rows, columns = np.where(~np.isnan(sample_mask_stack))
-    sample_ids = sample_mask_stack[slice_numbers, rows, columns].astype(int)
+        print("Exporting sample coordinates...")
+        # save out sample masks as pixel coordinates
+        slice_numbers, rows, columns = np.where(~np.isnan(sample_mask_stack))
+        sample_ids = sample_mask_stack[slice_numbers, rows, columns].astype(int)
 
-    sample_data["segmentation_row"] = np.full(len(sample_data), np.nan)
-    sample_data["segmentation_col"] = np.full(len(sample_data), np.nan)
-    for sample_id, row, col in zip(sample_ids, rows, columns):
-        sample_data.at[sample_id, "segmentation_row"] = row
-        sample_data.at[sample_id, "segmentation_col"] = col
-    sample_data.reset_index().to_csv(args.sample_data, index=False)
-    plt.show()
+        sample_data["segmentation_row"] = np.full(len(sample_data), np.nan)
+        sample_data["segmentation_col"] = np.full(len(sample_data), np.nan)
+        for sample_id, row, col in zip(sample_ids, rows, columns):
+            sample_data.at[sample_id, "segmentation_row"] = row
+            sample_data.at[sample_id, "segmentation_col"] = col
+        sample_data.reset_index().to_csv(args.sample_data, index=False)
+        plt.show()

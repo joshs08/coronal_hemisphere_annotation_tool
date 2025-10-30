@@ -30,6 +30,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description=__doc__, formatter_class=RawDescriptionHelpFormatter)
     parser.add_argument("image_directory", help="/path/to/image/directory/", type=str)
     parser.add_argument("output_directory", help="/path/to/output/directory/", type=str)
+    parser.add_argument("damaged_sections_directory", help="/path/to/damaged_sections/directory/", type=str)
     parser.add_argument("--slice_thickness", help="Slice thickness in micrometers.", type=float, default=150)
     parser.add_argument("--slice_direction", help="Either rostro-caudal or caudal-rostro.", type=str, default="caudal-rostro")
     args = parser.parse_args()
@@ -40,15 +41,17 @@ if __name__ == "__main__":
     Model.predict(args.image_directory, ensemble=True, section_numbers=True)
 
     try:
-        bad_sections = np.load(os.path.join(args.image_directory, "exclude.npy"), allow_pickle=True).tolist()
+        bad_sections = np.load(os.path.join(args.damaged_sections_directory, "exclude.npy"), allow_pickle=True).tolist()
+        print(f"no bad sections")
         if len(bad_sections) > 0: 
             Model.set_bad_sections(bad_sections=bad_sections)
+            print(f"excluding {bad_sections}")
     except:
         print("Exclusion not yet run")
         
-    if args.slice_direction == "caudal-rostro":
+    if args.slice_direction == "rostro-caudal":
         Model.enforce_index_spacing(section_thickness=-args.slice_thickness)
-    elif args.slice_direction == "rostro-caudal":
+    elif args.slice_direction == "caudal-rostro":
         Model.enforce_index_spacing(section_thickness=args.slice_thickness)
     else:
         raise ValueError("Parameter section_thickness one of rostro-caudal or caudal-rostro, not {args.section_direction}.")
