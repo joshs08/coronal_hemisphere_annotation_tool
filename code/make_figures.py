@@ -98,7 +98,7 @@ if __name__ == "__main__":
     yc = total_rows / 2
 
     # load original .tif 
-    raw_image_paths = [Path(path) for path in glob.glob(args.image_directory + "*.tif")]
+    raw_image_paths = [Path(path) for path in glob.glob(args.image_directory + "/*.tif")]
     raw_slice_numbers = [next(int(substring) for substring in path.stem.split("_") if substring.isdigit()) for path in raw_image_paths]
     raw_order = np.argsort(raw_slice_numbers)
     raw_slice_numbers = [raw_slice_numbers[ii] for ii in raw_order]
@@ -327,6 +327,7 @@ if __name__ == "__main__":
                 ax.plot([zt, zz], [xt, xx], [-yt, -yy], linewidth=0.5, color="#677e8c")
 
     print("Select the desired view. The figure will be saved on closing.")
-    plt.show()
+    #plt.show()
     fig.savefig(output_directory / "reconstruction_in_3d.pdf")
     fig.savefig(output_directory / "reconstruction_in_3d.svg")
+    plt.close()

@@ -105,7 +105,11 @@ if __name__ == "__main__":
         print(f"{ii + 1} / {len(registration)}")
         aba_image = get_aba_image(aba_annotations[ii], cmap=color_map)
         aba_images.append(aba_image)
-        Image.fromarray(aba_image).save(output_directory / row.Filenames.replace(".png", "_aba_annotation.png"))
+        try:
+            Image.fromarray(aba_image).save(output_directory / row.Filenames.replace(".png", "_aba_annotation.png"))
+        except:
+            Image.fromarray(aba_image).save(output_directory / row.filename.replace(".png", "_aba_annotation.png"))
+
 
     print("Saving results...")
     color_map_array = np.c_[list(color_map.keys()), list(color_map.values())]
