@@ -15,7 +15,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import re
 import glob
-from tifffile import imread
+#from tifffile import imread
+from skimage.io import imread
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from pathlib import Path
 from matplotlib.backends import backend_pdf
@@ -57,34 +58,47 @@ def get_well_spaced_vectors(vectors, minimum_delta_angle=2*np.pi/36):
     angles = get_well_spaced_angles(angles, minimum_delta_angle)
     return np.c_[np.cos(angles), np.sin(angles)]
 
+def convert_to_image_array(images, fill_value=0):
+    """Create a 3D image array out of a list of differently sized images."""
+    shapes = [img.shape for img in images]
+    max_rows, max_columns = np.max(shapes, axis=0)
+    # arr = np.zeros((len(images), max_rows, max_columns))
+    arr = np.full((len(images), max_rows, max_columns), fill_value, dtype=images[0].dtype)
 
-if __name__ == "__main__":
+    for ii, (image, (rows, columns)) in enumerate(zip(images, shapes)):
+        start_row = int(np.ceil((max_rows - rows) / 2))
+        start_column = int(np.ceil((max_columns - columns) / 2))
+        arr[ii, start_row:start_row+rows, start_column:start_column+columns] = image
 
-    parser = ArgumentParser(description=__doc__, formatter_class=RawDescriptionHelpFormatter)
+    return arr
 
-    parser = ArgumentParser()
-    parser.add_argument("segmentation",     help="/path/to/segmentation/directory/", type=str)
-    parser.add_argument("annotation",       help="/path/to/annotation/directory/",   type=str)
-    parser.add_argument("sample_data",      help="/path/to/sample_data.csv",         type=str)
-    parser.add_argument("output_directory", help="/path/to/ouput/directory/",        type=str)
-    parser.add_argument("image_directory", help="/path/to/image/directory/",        type=str)
-    args = parser.parse_args()
+def plot_single():
+    segmentation = r""
+    annotation = r""
+    sample_data = r""
+    output_directory = r"J:\CHAT\data"
+    image_directory = r""
 
-    output_directory = Path(args.output_directory)
+    root = r"J:\CHAT"
+    date = "2019_04_05"
+    slice = 7
+    pre_dir = Path (root) / "output_251030_new_midlines" / date
+    post_dir = Path (root) / "QuickNII_processing" / date
+
+    output_directory = Path(output_directory)
     output_directory.mkdir(exist_ok=True)
 
     # load segmentation
-    segmentation_directory = Path(args.segmentation)
-    data = np.load(segmentation_directory / "segmentation_results.npz")
+    data = np.load(pre_dir / "segmentation" / "segmentation_results.npz")
     slice_images  = data["slice_images"]
     slice_masks   = data["slice_masks"]
     sample_masks  = data["sample_masks"]
     slice_numbers = data["slice_numbers"]
 
-    df = pd.read_csv(args.sample_data)
+    df = pd.read_csv(sample_data)
 
     # load annotation
-    data = np.load(Path(args.annotation) / "annotation_results.npz", allow_pickle=True)
+    data = np.load(pre_dir / "annotation" / "annotation_results.npz", allow_pickle=True)
     annotations     = data["annotations"]
     color_map_array = data["color_map"]
     name_map_array  = data["name_map"]
@@ -98,7 +112,7 @@ if __name__ == "__main__":
     yc = total_rows / 2
 
     # load original .tif 
-    raw_image_paths = [Path(path) for path in glob.glob(args.image_directory + "/*.tif")]
+    raw_image_paths = [Path(path) for path in glob.glob(image_directory + "/*.tif")]
     raw_slice_numbers = [next(int(substring) for substring in path.stem.split("_") if substring.isdigit()) for path in raw_image_paths]
     raw_order = np.argsort(raw_slice_numbers)
     raw_slice_numbers = [raw_slice_numbers[ii] for ii in raw_order]
@@ -106,195 +120,231 @@ if __name__ == "__main__":
 
     # --------------------------------------------------------------------------------
 
-    print("Plotting slices & annotations...")
+    print("Plotting pre...")
     date, = df["date"].unique()
     fmt = lambda s: re.sub(r'^(\d{2})/(\d{2})/(\d{4})$', r'\3_\2_\1', s)
     date = fmt(date)
     date = date.replace("-", "_")
 
-    with backend_pdf.PdfPages(output_directory / f"individual_slices_{date}.pdf") as pdf:
+    ii = slice
 
-        for ii in range(total_slices):
-            print(f"{ii+1} / {total_slices}")
-            slice_number = slice_numbers[ii]
-            slice_image  = slice_images[ii]
-            slice_mask   = slice_masks[ii]
-            annotation   = annotations[ii]
-            sample_mask  = sample_masks[ii]
-            raw_image    = imread(raw_image_paths[ii])
-            raw_image    = equalize(raw_image)
+    print(f"{ii+1} / {total_slices}")
+    slice_number = slice_numbers[ii]
+    slice_image  = slice_images[ii]
+    slice_mask   = slice_masks[ii]
+    annotation   = annotations[ii]
+    sample_mask  = sample_masks[ii]
+    raw_image    = imread(raw_image_paths[ii])
+    raw_image    = equalize(raw_image)
 
-            fig, axes = plt.subplots(4, 1, sharex=True, sharey=True, figsize=(6, 12))
-            for ax in axes:
-                ax.axis("off")
-                ax.set_aspect("equal")
-            axes[0].imshow(slice_image, cmap="gray")
-            axes[2].imshow(slice_image, cmap="gray")
-            axes[3].imshow(raw_image, cmap="gray")
+    fig, axes = plt.subplots(4, 1, sharex=True, sharey=True, figsize=(6, 12))
+    for ax in axes:
+        ax.axis("off")
+        ax.set_aspect("equal")
+    axes[0].imshow(slice_image, cmap="gray")
+    axes[2].imshow(slice_image, cmap="gray")
+    axes[3].imshow(raw_image, cmap="gray")
 
-            # plot slice contour
-            contours = find_contours(slice_mask, 0.5)
-            for contour in contours:
+    # plot slice contour
+    contours = find_contours(slice_mask, 0.5)
+    for contour in contours:
+        x = contour[:, 1]
+        y = contour[:, 0]
+        axes[1].plot(x, y, "#677e8c", linewidth=1.0)
+        axes[2].plot(x, y, "#677e8c", linewidth=1.0)
+
+    # get the contour around the outside of the slice
+    contour = sorted(contours, key = lambda x : len(x))[-1]
+    slice_contour = Polygon(np.c_[contour[:, 1], contour[:, 0]])
+
+    # plot region contours
+    for annotation_id in np.unique(annotation):
+        if annotation_id > 0: # 0 is background
+            region_mask = annotation == annotation_id
+            for contour in find_contours(region_mask, 0.5):
                 x = contour[:, 1]
                 y = contour[:, 0]
-                axes[1].plot(x, y, "#677e8c", linewidth=1.0)
-                axes[2].plot(x, y, "#677e8c", linewidth=1.0)
+                axes[1].plot(x, y, color=to_hex(color_map[annotation_id]/255), linewidth=0.25)
+                axes[2].plot(x, y, color=to_hex(color_map[annotation_id]/255), linewidth=0.25)
 
-            # get the contour around the outside of the slice
+    subset = df[df["slice_number"] == slice_number]
+
+    if len(subset) > 0:
+
+        # compute slice radius, i.e. maximum distance from center
+        slice_radius = 0
+        center = np.array([yc, xc])
+        for contour in contours:
+            delta = contour - center[np.newaxis, :]
+            distance = np.linalg.norm(delta, axis=1)
+            slice_radius = max(slice_radius, np.max(distance))
+
+        # plot sample locations
+        for _, row in subset.iterrows():
+            x = row["segmentation_col"]
+            y = row["segmentation_row"]
+            axes[1].plot(x, y, linestyle="", marker='o', markersize=1, color=row["subclass_color"])
+            axes[2].plot(x, y, linestyle="", marker='o', markersize=1, color=row["subclass_color"])
+
+        # annotate samples; prevent labels from overlapping
+        labels = subset["barcode"]
+        indices = subset.index.values
+        center = np.array([xc, yc])
+        coordinates = subset[["segmentation_col", "segmentation_row"]].values
+        vectors = coordinates - center[np.newaxis, :]
+        vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
+        if len(vectors) > 1:
+            vectors = get_well_spaced_vectors(vectors)
+        for xy, vector, label, idx in zip(coordinates, vectors, labels, indices):
+            line = LineString([center, center + 1.1 * slice_radius * vector])
+            # error index out of range
+            try:
+                intersection = np.array(slice_contour.intersection(line).coords[:][-1])
+            except Exception as e:
+                print(e)
+                print(f"Slice: {ii}, cell pos: {xy}, vector: {vector}, label: {label}, cell index: {idx}")
+                intersection = center
+            axes[1].annotate(
+                f"{label} ({idx})",
+                xy,
+                center + 1.1 * (intersection - center),
+                ha="right", va="bottom",
+                fontsize=5,
+                color="#677e8c",
+                arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
+                wrap=True,
+            )
+            axes[2].annotate(
+                f"{label} ({idx})",
+                xy,
+                center + 1.1 * (intersection - center),
+                ha="right", va="bottom",
+                fontsize=5,
+                color="#677e8c",
+                arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
+                wrap=True,
+            )
+
+        # plot regions that have a sample in them
+        region_coordinates = []
+        region_labels = []
+        region_colors = []
+        for annotation_id in np.unique(subset["annotation_id"]):
+            region_mask = annotation == annotation_id
+            region_mask[:, :int(xc) + 1] = False
+            contours = find_contours(region_mask, 0.5)
+            # The contour finding algorithm sometimes identifies
+            # spurious contours around the corners of the region.
+            # We hence only plot the largest contour.
             contour = sorted(contours, key = lambda x : len(x))[-1]
-            slice_contour = Polygon(np.c_[contour[:, 1], contour[:, 0]])
+            patch = plt.Polygon(np.c_[contour[:, 1], contour[:, 0]], color=to_hex(color_map[annotation_id]/255))
+            axes[1].add_patch(patch)
+            patch = plt.Polygon(np.c_[contour[:, 1], contour[:, 0]], color=to_hex(color_map[annotation_id]/255))
+            axes[2].add_patch(patch)
+            polygon = Polygon(np.c_[contour[:, 1], contour[:, 0]])
+            poi = polylabel(polygon, tolerance=0.1)
+            x, y = poi.x, poi.y
+            region_coordinates.append((x, y))
+            region_labels.append(name_map[int(annotation_id)])
 
-            # plot region contours
-            for annotation_id in np.unique(annotation):
-                if annotation_id > 0: # 0 is background
-                    region_mask = annotation == annotation_id
-                    for contour in find_contours(region_mask, 0.5):
-                        x = contour[:, 1]
-                        y = contour[:, 0]
-                        axes[1].plot(x, y, color=to_hex(color_map[annotation_id]/255), linewidth=0.25)
-                        axes[2].plot(x, y, color=to_hex(color_map[annotation_id]/255), linewidth=0.25)
+        # annotate regions
+        region_coordinates = np.array(region_coordinates)
+        vectors = region_coordinates - center[np.newaxis, :]
+        vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
+        if len(vectors) > 1:
+            vectors = get_well_spaced_vectors(vectors)
+        for xy, vector, label in zip(region_coordinates, vectors, region_labels):
+            line = LineString([center, center + 1.1 * slice_radius * vector])
+            try:
+                intersection = np.array(slice_contour.intersection(line).coords[:][-1])
+            except Exception as e:
+                print(e)
+                print(f"Slice: {ii}, cell pos: {xy}, vector: {vector}, label: {label}, cell index: {idx}")
+                intersection = center 
+            axes[1].annotate(
+                label,
+                xy,
+                center + 1.1 * (intersection - center),
+                ha="left", va="bottom",
+                fontsize=5,
+                color="#677e8c",
+                arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
+                wrap=True,
+            )
+            axes[2].annotate(
+                label,
+                xy,
+                center + 1.1 * (intersection - center),
+                ha="left", va="bottom",
+                fontsize=5,
+                color="#677e8c",
+                arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
+                wrap=True,
+            )
 
-            subset = df[df["slice_number"] == slice_number]
+    fig.savefig(output_directory / f"slice_{slice_number:03d}.svg")
+    plt.close(fig)
 
-            if len(subset) > 0:
+# --------------------------------------------------------------------------------
 
-                # compute slice radius, i.e. maximum distance from center
-                slice_radius = 0
-                center = np.array([yc, xc])
-                for contour in contours:
-                    delta = contour - center[np.newaxis, :]
-                    distance = np.linalg.norm(delta, axis=1)
-                    slice_radius = max(slice_radius, np.max(distance))
+def plot_3d():
+    from skimage.color import rgb2gray
+    path = r"J:\CHAT\output_251030_new_midlines\2019-04-05\annotation"
+    path = r"J:\CHAT\QuickNII_processing\2019-04-05\QN"
 
-                # plot sample locations
-                for _, row in subset.iterrows():
-                    x = row["segmentation_col"]
-                    y = row["segmentation_row"]
-                    axes[1].plot(x, y, linestyle="", marker='o', markersize=1, color=row["subclass_color"])
-                    axes[2].plot(x, y, linestyle="", marker='o', markersize=1, color=row["subclass_color"])
+    # Load all images (grayscale) and record shapes
+    paths = sorted(Path(path).glob("*Rainbow_2017.png"))
+    imgs = []
+    shapes = []
+    for p in paths:
+        img = imread(p)
+        if img.ndim == 3:
+            img = rgb2gray(img)
+        imgs.append(img)
+        shapes.append(img.shape)
 
-                # annotate samples; prevent labels from overlapping
-                labels = subset["barcode"]
-                indices = subset.index.values
-                center = np.array([xc, yc])
-                coordinates = subset[["segmentation_col", "segmentation_row"]].values
-                vectors = coordinates - center[np.newaxis, :]
-                vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
-                if len(vectors) > 1:
-                    vectors = get_well_spaced_vectors(vectors)
-                for xy, vector, label, idx in zip(coordinates, vectors, labels, indices):
-                    line = LineString([center, center + 1.1 * slice_radius * vector])
-                    # error index out of range
-                    try:
-                        intersection = np.array(slice_contour.intersection(line).coords[:][-1])
-                    except Exception as e:
-                        print(e)
-                        print(f"Slice: {ii}, cell pos: {xy}, vector: {vector}, label: {label}, cell index: {idx}")
-                        intersection = center
-                    axes[1].annotate(
-                        f"{label} ({idx})",
-                        xy,
-                        center + 1.1 * (intersection - center),
-                        ha="right", va="bottom",
-                        fontsize=5,
-                        color="#677e8c",
-                        arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
-                        wrap=True,
-                    )
-                    axes[2].annotate(
-                        f"{label} ({idx})",
-                        xy,
-                        center + 1.1 * (intersection - center),
-                        ha="right", va="bottom",
-                        fontsize=5,
-                        color="#677e8c",
-                        arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
-                        wrap=True,
-                    )
+    # Target (max) size
+    max_h = max(h for h, w in shapes)
+    max_w = max(w for h, w in shapes)
 
-                # plot regions that have a sample in them
-                region_coordinates = []
-                region_labels = []
-                region_colors = []
-                for annotation_id in np.unique(subset["annotation_id"]):
-                    region_mask = annotation == annotation_id
-                    region_mask[:, :int(xc) + 1] = False
-                    contours = find_contours(region_mask, 0.5)
-                    # The contour finding algorithm sometimes identifies
-                    # spurious contours around the corners of the region.
-                    # We hence only plot the largest contour.
-                    contour = sorted(contours, key = lambda x : len(x))[-1]
-                    patch = plt.Polygon(np.c_[contour[:, 1], contour[:, 0]], color=to_hex(color_map[annotation_id]/255))
-                    axes[1].add_patch(patch)
-                    patch = plt.Polygon(np.c_[contour[:, 1], contour[:, 0]], color=to_hex(color_map[annotation_id]/255))
-                    axes[2].add_patch(patch)
-                    polygon = Polygon(np.c_[contour[:, 1], contour[:, 0]])
-                    poi = polylabel(polygon, tolerance=0.1)
-                    x, y = poi.x, poi.y
-                    region_coordinates.append((x, y))
-                    region_labels.append(name_map[int(annotation_id)])
+    # Symmetric padding to target size
+    padded_imgs = []
+    for img in imgs:
+        h, w = img.shape
+        dh, dw = max_h - h, max_w - w
+        top, bottom = dh // 2, dh - dh // 2
+        left, right = dw // 2, dw - dw // 2
+        img_pad = np.pad(img, ((top, bottom), (left, right)), mode="constant", constant_values=0)
+        padded_imgs.append(img_pad)
 
-                # annotate regions
-                region_coordinates = np.array(region_coordinates)
-                vectors = region_coordinates - center[np.newaxis, :]
-                vectors = vectors / np.linalg.norm(vectors, axis=1)[:, np.newaxis]
-                if len(vectors) > 1:
-                    vectors = get_well_spaced_vectors(vectors)
-                for xy, vector, label in zip(region_coordinates, vectors, region_labels):
-                    line = LineString([center, center + 1.1 * slice_radius * vector])
-                    try:
-                        intersection = np.array(slice_contour.intersection(line).coords[:][-1])
-                    except Exception as e:
-                        print(e)
-                        print(f"Slice: {ii}, cell pos: {xy}, vector: {vector}, label: {label}, cell index: {idx}")
-                        intersection = center 
-                    axes[1].annotate(
-                        label,
-                        xy,
-                        center + 1.1 * (intersection - center),
-                        ha="left", va="bottom",
-                        fontsize=5,
-                        color="#677e8c",
-                        arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
-                        wrap=True,
-                    )
-                    axes[2].annotate(
-                        label,
-                        xy,
-                        center + 1.1 * (intersection - center),
-                        ha="left", va="bottom",
-                        fontsize=5,
-                        color="#677e8c",
-                        arrowprops=dict(arrowstyle="-", color="#677e8c", linewidth=0.25),
-                        wrap=True,
-                    )
-
-            fig.savefig(output_directory / f"slice_{slice_number:03d}.svg")
-            pdf.savefig(fig)
-            plt.close(fig)
-
-    # --------------------------------------------------------------------------------
-
-    print("Plotting slices aligned in 3D...")
-
+    # Plot contours in 3D (one "layer" per slice index)
     fig = plt.figure(figsize=(12, 10))
     ax = fig.add_subplot(111, projection='3d')
     ax.axis("off")
 
-    for ii in range(total_slices):
-        print(f"{ii+1} / {total_slices}")
-        slice_number = slice_numbers[ii]
-        slice_image  = slice_images[ii]
-        slice_mask   = slice_masks[ii]
-        annotation   = annotations[ii]
-        sample_mask  = sample_masks[ii]
+    for ii, img in enumerate(padded_imgs):
+        mask = img > 0
+        cs = find_contours(mask.astype(float), level=0.5)
+        for c in cs:
+            x = c[:, 1]                      # cols
+            y = c[:, 0]                      # rows
+            z = np.full_like(x, -ii, dtype=float)
+            ax.plot(x, -y, z, color="#677e8c", linewidth=1.0)
 
-        # plot slice contour
-        contours = find_contours(slice_mask, 0.5)
+    plt.show()
+
+    total_slices = len(imgs)
+    for ii in range(total_slices):
+        # determine image center
+        slice = imgs[ii]
+        total_rows, total_cols = slice.shape
+        xc = total_cols / 2
+        yc = total_rows / 2
+
         for contour in contours:
             x = contour[:, 1]
             y = contour[:, 0]
-            z = -slice_number * np.ones_like(x)
+            z = -ii * np.ones_like(x)
             ax.plot(z, x, -y, "#677e8c", linewidth=1.0)
 
         # compute slice radius
@@ -305,29 +355,10 @@ if __name__ == "__main__":
             distance = np.linalg.norm(delta, axis=1)
             slice_radius = max(slice_radius, np.max(distance))
 
-        # plot and label samples
-        for _, row in df[df["slice_number"] == slice_number].iterrows():
-            x = row["segmentation_col"]
-            y = row["segmentation_row"]
-            xyz = np.array([-slice_number, x, -y])
-            ax.plot(*xyz, linestyle="", marker='o', color=row["subclass_color"])
-
-    # label clones
-    for barcode in np.unique(df["barcode"]):
-        clone = df[df["barcode"] == barcode]
-        if len(clone) > 1:
-            Z = -clone["slice_number"]
-            X = clone["segmentation_col"]
-            Y = clone["segmentation_row"]
-            zt = Z.mean()
-            xt = xc + 2 * (X.mean() - xc)
-            yt = yc + 2 * (Y.mean() - yc)
-            ax.text(zt, xt, -yt, barcode + " ", ha="right")
-            for zz, xx, yy in zip(Z, X, Y):
-                ax.plot([zt, zz], [xt, xx], [-yt, -yy], linewidth=0.5, color="#677e8c")
-
     print("Select the desired view. The figure will be saved on closing.")
     #plt.show()
-    fig.savefig(output_directory / "reconstruction_in_3d.pdf")
-    fig.savefig(output_directory / "reconstruction_in_3d.svg")
+    fig.savefig(path / "reconstruction_in_3d.pdf")
+    fig.savefig(path / "reconstruction_in_3d.svg")
     plt.close()
+
+plot_3d()
