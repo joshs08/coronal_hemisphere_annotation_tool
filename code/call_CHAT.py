@@ -30,14 +30,19 @@ def json_to_csv(json_file, csv_file):
 input_csv = "J:/CHAT/data/plates_6_11_12_13_14_16_17_18.csv"
 input_image_root = "J:/CHAT/data/"
 output_dir = "J:/CHAT/output_251030_new_midlines/"
-clean_dir = "J:/CHAT/VisuAlign_processing"
+quicknii_dir = "J:/CHAT/QuickNII_processing"
+visualign_dir = "J:/CHAT/VisuAlign_processing"
+clean_dir = visualign_dir
 code_dir = Path("C:/Users/Josh Selfe/Documents/GitHub/coronal_hemisphere_annotation_tool/code/")
 allen = "J:/CHAT/ABA"
 
 exclude_completed = False # Do we bypass folders already present in output folder?
 exclude_slices = False # Do we run the script to exclude damaged slices?
 run_pipeline = True # Do we run the rest of the pipeline?
-run_figures = False
+run_figures = True
+run_alignment_comparison = False # NB new rbw.png files needed if we use this, from nea cleaned jsons
+start_at = []
+start_at_boolean = True
 
 excluded_folders = []
 
@@ -51,28 +56,35 @@ if exclude_completed:
     existing_dates = {p.name for p in Path(output_dir).iterdir() if p.is_dir()} if Path(output_dir).exists() else set()
     image_dates = [d for d, conv in converted.items() if conv not in existing_dates]
 
-#image_dates = ["04_09_18"]
+#image_dates = ["22_03_19"]
 
 slice_direction = "rostro-caudal"
 slice_thickness = 250
 
 for image_date in image_dates:
     date = datetime.strptime(image_date, "%d_%m_%y").strftime("%Y-%m-%d")
+    if date in start_at:
+        start_at_boolean = True
+    if start_at_boolean == False:
+        print (f"Skipping {date} as skipping until {start_at}")
+        continue
     if date in excluded_folders:
         continue
-    sample_data_csv = os.path.join(clean_dir, date, f"sample_data_{date}.csv")
+    sample_data_csv = os.path.join(visualign_dir, date, f"sample_data_{date}.csv")
     input_image_dir = join_dir(input_image_root, image_date)
     # Get old midlines
     #midlines_date_dir = os.path.join(input_image_dir, "segmentation", "midlines.npy")
 
-    output_dir_date = join_dir(clean_dir, date) # clean_dir
+    output_dir_date = join_dir(visualign_dir, date)
     Path(output_dir_date).mkdir(parents=True, exist_ok=True)
 
     seg = join_dir(output_dir, date, "segmentation")#join_dir(output_dir_date,
-    VA_seg = join_dir(clean_dir, date, "segmentation")
-    ann = join_dir(clean_dir, date, "annotation")
-    reg, fig = (join_dir(output_dir_date, "registration"), 
-                          join_dir(output_dir_date, "figures"))
+    VA_seg = join_dir(visualign_dir, date, "QN")
+    quicknii_ann = join_dir(quicknii_dir, date, "annotation")
+    rainbow_json = os.path.join(visualign_dir, date, "QN", "Rainbow 2017.json")
+    ann = join_dir(visualign_dir, date, "annotation")
+    reg, fig = (join_dir(quicknii_dir, date, "registration"), 
+                join_dir(output_dir_date, "figures"))
     #if Path(reg).exists():
     #    continue
     
@@ -80,6 +92,12 @@ for image_date in image_dates:
 
     t0 = time.time()
 
+    # Individual clones
+    inhibitory_examples = [
+        ('CBLK1097.1A', 'TCCGGCTAGTTC'),
+        ('CBLK1097.1B', 'TTTGGCGGTACA'),
+        ('CBLK1169.1F', 'AACAGCTAGTTG'),
+    ]
     pdf_file = join_dir(fig, f"individual_slices_{date.replace('-', '_')}.pdf")
     if run_pipeline:
         #run(sys.executable, code_dir/"extract_sample_data.py", str(input_csv), "date", str(date), str(sample_data_csv), "--show")
@@ -97,16 +115,37 @@ for image_date in image_dates:
         # Register using deep slice
         #run(sys.executable, code_dir/"image_registration.py", str(seg), str(reg), str(seg),
         #    "--slice_direction", str(slice_direction), "--slice_thickness", str(slice_thickness))
-        # Convert json to csv (for QuickNII output)
-        fn = "deepslice_registration_results_cleaned"
-        if not os.path.exists(os.path.join(reg, fn + ".csv")):
-            json_to_csv(str(os.path.join(reg, fn + ".json")), str(os.path.join(reg, fn + ".csv")))
-        # Annotate using ABA
-        #run(sys.executable, code_dir/"image_annotation.py", str(os.path.join(reg, "deepslice_registration_results_cleaned.csv")), str(allen), str(ann))
-        #run(sys.executable, code_dir/"image_annotation_VisuAlign.py", str(allen), str(ann))
+        # VisuAlign annotation reads the updated nonlinear .flat files from QN.
+        run(
+            sys.executable,
+            code_dir/"image_annotation_VisuAlign.py",
+            str(VA_seg),
+            str(seg),
+            str(allen),
+            str(ann),
+            "--reference-annotation",
+            str(quicknii_ann),
+            "--rainbow-json",
+            str(rainbow_json),
+        )
         # Annotate samples with known image locations
-        #run(sys.executable, code_dir/"sample_annotation.py", str(ann), str(sample_data_csv))
-        run(sys.executable, code_dir/"sample_annotation_VisuAlign.py", str(VA_seg), str(ann), str(sample_data_csv), str(seg))
+        run(sys.executable, code_dir/"sample_annotation.py", str(ann), str(sample_data_csv))
     if run_figures:
         run(sys.executable, code_dir/"make_figures.py", str(seg), str(ann), str(sample_data_csv), str(fig), str(input_image_dir))
+        #run(sys.executable, code_dir/"make_figures_indiv_clones.py", str(seg), str(ann), str(sample_data_csv), str(fig),  "--highlight", "AACAGCTAGTTG")
+    if run_alignment_comparison:
+        run(
+            sys.executable,
+            code_dir/"plot_3d_pre_and_post.py",
+            "--dates",
+            str(date),
+            "--pre-root",
+            str(quicknii_dir),
+            "--post-root",
+            str(visualign_dir),
+            "--post-subdir",
+            "QN",
+            "--output-root",
+            str(fig),
+        )
     print(f"✓ {date} finished in {time.time()-t0:.1f}s")

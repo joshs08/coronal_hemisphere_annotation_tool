@@ -53,4 +53,4 @@ input = r"J:\CHAT\output_251030_new_midlines"
 output = r"J:\CHAT\QuickNII_processing"
 
 #copy_midlines_and_exclude(input, output)
-combine_csvs(r"J:\CHAT\QuickNII_processing")
+combine_csvs(r"J:\CHAT\VisuAlign_processing")
